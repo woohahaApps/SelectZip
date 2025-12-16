@@ -1,41 +1,69 @@
-# Prerequisites
-*.d
+#################################
+# Visual Studio & C++ Project   #
+#################################
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# 1. 사용자별 로컬 설정 파일 (User Specific Files)
+# 각 개발자의 로컬 환경 설정이 저장되며, 공유 불필요
+*.user
+*.user.lock
+*.suo
+*.sln.docstates
+*.sln.docstates.new
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
+# 2. 빌드 출력 및 중간 파일 (Build Output and Intermediates)
+# 컴파일 과정에서 생성되므로 Git에 포함 불필요
+**/Debug/
+**/Release/
+**/x64/
+**/x86/
+**/ARM/
+**/ARM64/
+**/bin/
+**/obj/
+ipch/
+*.aps
+*.aps.bak
+*.bsc
+*.ncb
+*.idb
 *.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
+*.obj
+*.ilk
 *.lib
-
-# Executables
+*.exp
 *.exe
-*.out
-*.app
+*.dll
+*.sys
+*.ocx
+*.tlb
+*.tlh
+*.tli
+*.resources
+*.res
+*.lo
+*.la
+*.pyc
 
-# debug information files
-*.dwo
+# 3. 임시 및 메타데이터 파일 (Temporary and Metadata Files)
+# Visual Studio의 임시 작업 및 캐시 파일
+.vs/                   # Visual Studio 2017+ 솔루션 메타데이터 폴더
+.idea/                 # ReSharper 또는 JetBrains Rider 관련
+*vspriv.cht
+*vspriv.chg
+*vspriv.clg
+
+# 4. 기타 프로젝트 생성 파일
+# Windows 관련 도움말 파일
+*.hlp
+*.map
+*.pch
+*.pjm
+
+# 5. Visual Studio Code 설정 (VS Code Users)
+.vscode/
+
+# 6. NuGet 패키지 폴더 (NuGet Packages)
+packages/
+
+# 7. JetBrains Rider 임시 파일
+.idea/
