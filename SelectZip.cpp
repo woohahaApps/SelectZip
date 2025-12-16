@@ -1,22 +1,172 @@
-﻿// SelectZip.cpp : 이 파일에는 'main' 함수가 포함됩니다. 거기서 프로그램 실행이 시작되고 종료됩니다.
-//
+﻿#include <iostream>
+#include <string>
+#include <vector>
+#include <sstream>
+#include <filesystem>
+#include <algorithm>
+#include <zip.h> // libzip 헤더
 
-#include <iostream>
-#include "zlib.h"   // zlib 라이브러리 사용
-#include "zip.h"    // libzip 라이브러리 사용
+namespace fs = std::filesystem;
 
-int main()
-{
-    std::cout << "Hello World!\n";
+// 문자열을 소문자로 변환 (확장자 비교용)
+std::string toLower(const std::string& str) {
+    std::string lowerStr = str;
+    std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::tolower);
+    return lowerStr;
 }
 
-// 프로그램 실행: <Ctrl+F5> 또는 [디버그] > [디버깅하지 않고 시작] 메뉴
-// 프로그램 디버그: <F5> 키 또는 [디버그] > [디버깅 시작] 메뉴
+// 구분자(;)로 확장자 목록 파싱
+std::vector<std::string> parseExtensions(const std::string& extString) {
+    std::vector<std::string> extensions;
+    std::stringstream ss(extString);
+    std::string segment;
+    while (std::getline(ss, segment, ';')) {
+        // 공백 제거 및 점(.)이 없으면 추가
+        if (!segment.empty()) {
+            if (segment[0] != '.') segment = "." + segment;
+            extensions.push_back(toLower(segment));
+        }
+    }
+    return extensions;
+}
 
-// 시작을 위한 팁: 
-//   1. [솔루션 탐색기] 창을 사용하여 파일을 추가/관리합니다.
-//   2. [팀 탐색기] 창을 사용하여 소스 제어에 연결합니다.
-//   3. [출력] 창을 사용하여 빌드 출력 및 기타 메시지를 확인합니다.
-//   4. [오류 목록] 창을 사용하여 오류를 봅니다.
-//   5. [프로젝트] > [새 항목 추가]로 이동하여 새 코드 파일을 만들거나, [프로젝트] > [기존 항목 추가]로 이동하여 기존 코드 파일을 프로젝트에 추가합니다.
-//   6. 나중에 이 프로젝트를 다시 열려면 [파일] > [열기] > [프로젝트]로 이동하고 .sln 파일을 선택합니다.
+// ZIP 내부 경로 형식으로 변환 (Windows '\' -> ZIP '/')
+std::string makeZipPath(const fs::path& root, const fs::path& filePath) {
+    // root로부터의 상대 경로 계산
+    fs::path relative = fs::relative(filePath, root);
+    std::string genericPath = relative.generic_string(); // '/' 구분자로 변환
+    return genericPath;
+}
+
+int main(int argc, char* argv[]) {
+    // 1. 파라미터 검증
+    if (argc < 4) {
+        std::cout << "Usage: SelectZip <RootDir> <Extensions> <ZipFileName>" << std::endl;
+        std::cout << "Example: SelectZip C:\\Data txt;cpp C:\\Backup\\data.zip" << std::endl;
+        std::cout << "\nPress Enter to exit...";
+        std::cin.get();
+        return 1;
+    }
+
+    fs::path rootDir = argv[1];
+    std::string extListStr = argv[2];
+    fs::path zipFilePath = argv[3];
+
+    // 6. 압축파일명에 경로가 없으면 루트 디렉토리에 생성
+    if (!zipFilePath.has_parent_path()) {
+        zipFilePath = rootDir / zipFilePath;
+    }
+
+    std::cout << "========================================" << std::endl;
+    std::cout << "Root Directory : " << rootDir << std::endl;
+    std::cout << "Target Extensions: " << extListStr << std::endl;
+    std::cout << "Output Zip File  : " << zipFilePath << std::endl;
+    std::cout << "========================================" << std::endl;
+
+    // 확장자 목록 파싱
+    auto targetExtensions = parseExtensions(extListStr);
+
+    // libzip 변수
+    int errorp = 0;
+    zip_t* archive = nullptr;
+
+    // 2. ZIP 파일 열기 (존재하면 열고, 없으면 생성)
+    // ZIP_CREATE: 없으면 생성, 일반적인 open은 기존 파일 유지 (업데이트 모드)
+    archive = zip_open(zipFilePath.string().c_str(), ZIP_CREATE, &errorp);
+
+    if (!archive) {
+        zip_error_t ziperror;
+        zip_error_init_with_code(&ziperror, errorp);
+        std::cerr << "Failed to open output file: " << zip_error_strerror(&ziperror) << std::endl;
+        zip_error_fini(&ziperror);
+        return 1;
+    }
+
+    int processedCount = 0;
+
+    try {
+        // 1. 지정된 루트 디렉토리 순회 (재귀적)
+        if (fs::exists(rootDir) && fs::is_directory(rootDir)) {
+            for (const auto& entry : fs::recursive_directory_iterator(rootDir)) {
+                if (entry.is_regular_file()) {
+                    std::string fileExt = toLower(entry.path().extension().string());
+
+                    // 확장자 확인
+                    bool match = false;
+                    for (const auto& ext : targetExtensions) {
+                        if (fileExt == ext) {
+                            match = true;
+                            break;
+                        }
+                    }
+
+                    if (match) {
+                        // ZIP 내부 경로 생성
+                        std::string entryName = makeZipPath(rootDir, entry.path());
+                        std::string fullPathStr = entry.path().string();
+
+                        // 3. 콘솔 표시
+                        std::cout << "Processing: " << entryName << std::endl;
+
+                        // 파일 소스 생성
+                        zip_source_t* source = zip_source_file(archive, fullPathStr.c_str(), 0, 0);
+                        if (source == nullptr) {
+                            std::cerr << "  [Error] Failed to create source for: " << fullPathStr << std::endl;
+                            continue;
+                        }
+
+                        // 2. 파일 추가 또는 업데이트
+                        // 파일이 이미 존재하는지 확인
+                        zip_int64_t index = zip_name_locate(archive, entryName.c_str(), 0);
+
+                        if (index >= 0) {
+                            // 존재하면 교체 (Update)
+                            if (zip_file_replace(archive, index, source, 0) < 0) {
+                                std::cerr << "  [Error] Failed to replace file: " << zip_strerror(archive) << std::endl;
+                                zip_source_free(source);
+                            }
+                            else {
+                                std::cout << "  -> [Updated]" << std::endl;
+                            }
+                        }
+                        else {
+                            // 없으면 추가 (Add)
+                            if (zip_file_add(archive, entryName.c_str(), source, 0) < 0) {
+                                std::cerr << "  [Error] Failed to add file: " << zip_strerror(archive) << std::endl;
+                                zip_source_free(source);
+                            }
+                            else {
+                                std::cout << "  -> [Added]" << std::endl;
+                            }
+                        }
+                        processedCount++;
+                    }
+                }
+            }
+        }
+        else {
+            std::cerr << "Invalid root directory path." << std::endl;
+        }
+    }
+    catch (const fs::filesystem_error& ex) {
+        std::cerr << "Filesystem error: " << ex.what() << std::endl;
+    }
+    catch (const std::exception& ex) {
+        std::cerr << "Exception: " << ex.what() << std::endl;
+    }
+
+    // ZIP 닫기 (이 시점에 실제 쓰기 작업이 수행됨)
+    std::cout << "Finalizing archive (this may take a moment)..." << std::endl;
+    if (zip_close(archive) < 0) {
+        std::cerr << "Failed to write zip file: " << zip_strerror(archive) << std::endl;
+    }
+    else {
+        std::cout << "Done! Total " << processedCount << " files processed." << std::endl;
+    }
+
+    // 4. 사용자 입력 대기
+    std::cout << "\nPress Enter to exit...";
+    std::cin.get();
+
+    return 0;
+}
