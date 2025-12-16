@@ -2,6 +2,8 @@
 # Visual Studio & C++ Project   #
 #################################
 
+**/RefProject/
+
 # 1. 사용자별 로컬 설정 파일 (User Specific Files)
 # 각 개발자의 로컬 환경 설정이 저장되며, 공유 불필요
 *.user
