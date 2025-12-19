@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <zip.h> // libzip 헤더
+#include <windows.h> // GetModuleFileName 사용을 위해 필요
 
 namespace fs = std::filesystem;
 
@@ -41,16 +42,52 @@ std::string makeZipPath(const fs::path& root, const fs::path& filePath) {
 int main(int argc, char* argv[]) {
     // 1. 파라미터 검증
     if (argc < 4) {
-        std::cout << "Usage: SelectZip <RootDir> <Extensions> <ZipFileName>" << std::endl;
-        std::cout << "Example: SelectZip C:\\Data txt;cpp C:\\Backup\\data.zip" << std::endl;
+        std::cout << "Usage: .\\SelectZip.exe <RootDir> <Extensions> <ZipFileName>" << std::endl;
+        std::cout << "Example: .\\SelectZip.exe \"C:\\Data\" \"txt;cpp\" \"C:\\Backup\\data.zip\"" << std::endl;
+        std::cout << "if <RootDir> is . then use current directory." << std::endl;
+        std::cout << "if <ZipFileName> is . then use <current directory name>.zip" << std::endl;
         std::cout << "\nPress Enter to exit...";
         std::cin.get();
         return 1;
     }
 
-    fs::path rootDir = argv[1];
+    std::string inputRoot = argv[1];
+    fs::path rootDir;
+
+    if (inputRoot == ".") {
+        wchar_t path[MAX_PATH];
+        GetModuleFileNameW(NULL, path, MAX_PATH);
+
+        rootDir = fs::path(path).parent_path();
+        std::cout << "[Info] '.' detected. Setting root to executable path: " << rootDir << std::endl;
+    }
+    else {
+        rootDir = inputRoot;
+    }
+
     std::string extListStr = argv[2];
-    fs::path zipFilePath = argv[3];
+
+    //fs::path zipFilePath = argv[3];
+    std::string inputZipName = argv[3];
+    fs::path zipFilePath;
+
+    // [로직 2] ZipFileName 처리: . 입력 시 (디렉토리명).zip 사용
+    if (inputZipName == ".") {
+        // rootDir의 마지막 폴더명을 가져와 .zip을 붙임
+        // 예: C:\Data\Project -> Project.zip
+        std::string dirName = rootDir.filename().string();
+        if (dirName.empty()) { // 루트 디렉토리(C:\ 등)일 경우 예외 처리
+            dirName = "Archive";
+        }
+        zipFilePath = rootDir / (dirName + ".zip");
+    }
+    else {
+        zipFilePath = inputZipName;
+        // 압축파일명에 경로가 없으면 루트 디렉토리에 생성
+        if (!zipFilePath.has_parent_path()) {
+            zipFilePath = rootDir / zipFilePath;
+        }
+    }
 
     // 6. 압축파일명에 경로가 없으면 루트 디렉토리에 생성
     if (!zipFilePath.has_parent_path()) {
